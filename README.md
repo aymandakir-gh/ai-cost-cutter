@@ -80,6 +80,18 @@ cached("gpt-4o", "Hello")        # hit  -> free
 print(f"hit rate {cache.stats.hit_rate:.0%}, saved ${cache.stats.saved_cost:.4f}")
 ```
 
+Compress prompts and context before sending them:
+
+```python
+from ai_cost_cutter.compression import compress
+result = compress(long_prompt, strategies=["strip_whitespace", "dedupe_lines"], max_tokens=2000)
+print(f"{result.reduction:.0%} fewer tokens")   # then send result.compressed
+```
+
+```bash
+cat prompt.txt | aicc compress --dedupe --filler --max-tokens 2000
+```
+
 ## Roadmap
 
 - **v0.1** — `estimator` + `router`

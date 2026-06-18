@@ -30,6 +30,16 @@ from .cache import (
     ResponseCache,
     SQLiteBackend,
 )
+from .compression import (
+    CompressionResult,
+    MessagePruneResult,
+    compress,
+    dedupe_lines,
+    prune_messages,
+    remove_filler,
+    strip_whitespace,
+    truncate_middle,
+)
 from .pricing import (
     DEFAULT_PRICES,
     ModelPrice,
@@ -75,4 +85,13 @@ __all__ = [
     "CacheStats",
     "MemoryBackend",
     "SQLiteBackend",
+    # compression
+    "compress",
+    "CompressionResult",
+    "strip_whitespace",
+    "dedupe_lines",
+    "remove_filler",
+    "truncate_middle",
+    "prune_messages",
+    "MessagePruneResult",
 ]
