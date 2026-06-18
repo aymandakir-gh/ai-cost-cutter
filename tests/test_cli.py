@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from ai_cost_cutter.cli import main
 
 
@@ -49,6 +51,81 @@ def test_models_json(capsys):
     data = json.loads(capsys.readouterr().out)
     assert "gpt-4o" in data
     assert data["gpt-4o"]["provider"] == "openai"
+
+
+def test_price_compare_table_sorted_cheapest_first(capsys):
+    rc = main(
+        [
+            "price-compare",
+            "--input-tokens",
+            "1000",
+            "--output-tokens",
+            "500",
+            "-m",
+            "gpt-4o",
+            "-m",
+            "gpt-4o-mini",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    lines = [l for l in out.splitlines() if l and not l.startswith("-")]
+    # Header then two model rows; cheaper model (mini) listed first.
+    body = lines[1:]
+    assert body[0].startswith("gpt-4o-mini")
+    assert body[1].startswith("gpt-4o")
+    assert "x)" in body[1]  # multiplier marker on the pricier model
+
+
+def test_price_compare_json_totals_over_calls(capsys):
+    rc = main(
+        [
+            "price-compare",
+            "--input-tokens",
+            "1000000",
+            "--output-tokens",
+            "0",
+            "-m",
+            "gpt-4o",
+            "--calls",
+            "10",
+            "--json",
+        ]
+    )
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["calls"] == 10
+    entry = data["models"][0]
+    assert entry["model"] == "gpt-4o"
+    # 1M input tokens at $2.50/1M, 10 calls.
+    assert entry["cost_per_call"] == pytest.approx(2.50)
+    assert entry["total_cost"] == pytest.approx(25.0)
+
+
+def test_price_compare_from_prompt_counts_tokens(capsys):
+    rc = main(
+        ["price-compare", "--prompt", "hello " * 20, "-m", "gpt-4o", "--json"]
+    )
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["models"][0]["input_tokens"] > 0
+
+
+def test_price_compare_defaults_to_all_models(capsys):
+    rc = main(["price-compare", "--input-tokens", "100", "--json"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    names = {m["model"] for m in data["models"]}
+    # A sampling across providers from the default table.
+    assert {"gpt-4o", "claude-3-haiku", "gemini-1.5-flash"} <= names
+
+
+def test_price_compare_unknown_model_errors(capsys):
+    rc = main(
+        ["price-compare", "--input-tokens", "100", "-m", "no-such-model-xyz"]
+    )
+    assert rc == 2
+    assert "no price" in capsys.readouterr().err
 
 
 def test_compress_prints_text_and_stats(capsys):

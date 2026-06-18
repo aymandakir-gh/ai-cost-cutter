@@ -205,6 +205,134 @@ def _cmd_benchmark(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_price_compare_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "price-compare",
+        help="estimate one prompt/workload across several models side-by-side",
+    )
+    p.add_argument(
+        "--model",
+        "-m",
+        action="append",
+        dest="models",
+        metavar="MODEL",
+        help="a model to compare (repeatable); default: all known models",
+    )
+    src = p.add_mutually_exclusive_group()
+    src.add_argument("--prompt", help="prompt text (else read stdin)")
+    src.add_argument("--prompt-file", help="read the prompt from a file")
+    src.add_argument(
+        "--input-tokens", type=int, help="explicit input token count"
+    )
+    p.add_argument(
+        "--output-tokens",
+        type=int,
+        help="explicit output token count (with --input-tokens)",
+    )
+    p.add_argument(
+        "--expected-output",
+        type=int,
+        default=256,
+        help="assumed output tokens when counting from a prompt (default: 256)",
+    )
+    p.add_argument(
+        "--calls",
+        type=int,
+        default=1,
+        help="number of identical calls to total the cost over (default: 1)",
+    )
+    p.add_argument("--json", action="store_true", help="emit JSON")
+    p.set_defaults(func=_cmd_price_compare)
+
+
+def _cmd_price_compare(args: argparse.Namespace) -> int:
+    from .estimator import estimate, estimate_tokens
+    from .pricing import UnknownModelError
+
+    models = args.models or sorted(known_models())
+    calls = max(1, args.calls)
+
+    if args.input_tokens is not None:
+        out_tokens = args.output_tokens or 0
+
+        def make_estimate(model):
+            return estimate_tokens(model, args.input_tokens, out_tokens)
+
+    else:
+        if args.prompt_file:
+            with open(args.prompt_file, "r", encoding="utf-8") as fh:
+                prompt = fh.read()
+        elif args.prompt is not None:
+            prompt = args.prompt
+        else:
+            prompt = sys.stdin.read()
+
+        def make_estimate(model):
+            return estimate(model, prompt, args.expected_output)
+
+    rows = []
+    for model in models:
+        try:
+            est = make_estimate(model)
+        except UnknownModelError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        rows.append((model, est))
+
+    # Cheapest first.
+    rows.sort(key=lambda r: r[1].total_cost)
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "calls": calls,
+                    "models": [
+                        {
+                            "model": model,
+                            "input_tokens": est.input_tokens,
+                            "output_tokens": est.output_tokens,
+                            "cost_per_call": est.total_cost,
+                            "total_cost": est.total_cost * calls,
+                        }
+                        for model, est in rows
+                    ],
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    width = max((len(m) for m, _ in rows), default=5)
+    header = (
+        f"{'model'.ljust(width)}  {'in tok':>7}  {'out tok':>7}  "
+        f"{'$/call':>12}  {'$ total':>12}"
+    )
+    print(header)
+    print("-" * len(header))
+    cheapest = rows[0][1].total_cost if rows else 0.0
+    for model, est in rows:
+        per_call = est.total_cost
+        total = per_call * calls
+        marker = ""
+        if cheapest > 0:
+            mult = per_call / cheapest
+            if mult > 1.0:
+                marker = f"  ({mult:.1f}x)"
+        print(
+            f"{model.ljust(width)}  {est.input_tokens:>7}  "
+            f"{est.output_tokens:>7}  ${per_call:>10.6f}  ${total:>10.6f}{marker}"
+        )
+    if calls > 1:
+        print(f"(totals over {calls} identical calls)", file=sys.stderr)
+    if not _tokens.using_tiktoken():
+        print(
+            "(token counts are heuristic; install tiktoken for exact)",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def _add_models_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("models", help="list known models and their prices")
     p.add_argument("--json", action="store_true", help="emit JSON")
@@ -251,6 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
     _add_estimate_parser(sub)
+    _add_price_compare_parser(sub)
     _add_compress_parser(sub)
     _add_dashboard_parser(sub)
     _add_benchmark_parser(sub)
