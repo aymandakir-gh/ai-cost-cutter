@@ -40,6 +40,8 @@ from .compression import (
     strip_whitespace,
     truncate_middle,
 )
+from .dashboard import DashboardReport, ModelUsage, build_report
+from .ledger import CallRecord, Ledger
 from .pricing import (
     DEFAULT_PRICES,
     ModelPrice,
@@ -94,4 +96,10 @@ __all__ = [
     "truncate_middle",
     "prune_messages",
     "MessagePruneResult",
+    # ledger + dashboard
+    "Ledger",
+    "CallRecord",
+    "build_report",
+    "DashboardReport",
+    "ModelUsage",
 ]
