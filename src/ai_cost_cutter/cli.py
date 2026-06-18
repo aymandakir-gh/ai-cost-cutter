@@ -81,6 +81,11 @@ def _add_compress_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--model", "-m", help="model id (affects token counting)")
     p.add_argument("--max-tokens", type=int, help="cap output to N tokens")
     p.add_argument("--dedupe", action="store_true", help="drop duplicate lines")
+    p.add_argument(
+        "--dedupe-near",
+        action="store_true",
+        help="drop near-duplicate lines (case/punctuation/whitespace-insensitive)",
+    )
     p.add_argument("--filler", action="store_true", help="remove filler phrases")
     p.add_argument(
         "--minify-json",
@@ -114,6 +119,8 @@ def _cmd_compress(args: argparse.Namespace) -> int:
     strategies = ["strip_whitespace"]
     if args.dedupe:
         strategies.append("dedupe_lines")
+    if getattr(args, "dedupe_near", False):
+        strategies.append("dedupe_near_lines")
     if args.filler:
         strategies.append("remove_filler")
     if getattr(args, "minify_json", False):

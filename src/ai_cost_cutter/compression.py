@@ -10,6 +10,8 @@ Strategies
   blank-line runs. Lossless for content; on by default.
 - ``dedupe_lines``              : drop repeated identical lines (common in
   stuffed context). Opt-in.
+- ``dedupe_near_lines``         : drop near-duplicate lines via normalized
+  comparison (case/punctuation/whitespace-insensitive, configurable). Opt-in.
 - ``remove_filler``             : remove/shorten common filler phrases. Opt-in,
   lossy.
 - ``collapse_json_whitespace``  : minify JSON objects/arrays embedded in the
@@ -89,6 +91,62 @@ def dedupe_lines(text: str) -> str:
             continue
         if key:
             seen.add(key)
+        out.append(line)
+    return "\n".join(out)
+
+
+_NORMALIZE_PUNCT_RE = re.compile(r"[^\w\s]")
+_NORMALIZE_WS_RE = re.compile(r"\s+")
+
+
+def _normalize_line(
+    line: str, case_insensitive: bool, ignore_punctuation: bool
+) -> str:
+    """Normalize a line for near-duplicate comparison."""
+    norm = line
+    if case_insensitive:
+        norm = norm.lower()
+    if ignore_punctuation:
+        norm = _NORMALIZE_PUNCT_RE.sub(" ", norm)
+    norm = _NORMALIZE_WS_RE.sub(" ", norm).strip()
+    return norm
+
+
+def dedupe_near_lines(
+    text: str,
+    case_insensitive: bool = True,
+    ignore_punctuation: bool = True,
+    min_length: int = 1,
+) -> str:
+    """Drop near-duplicate lines, keeping the first occurrence of each.
+
+    Two lines are "near-duplicates" when their *normalized* forms are equal.
+    Normalization (configurable) collapses internal whitespace and, by default,
+    lowercases and strips punctuation — so ``"Step 1: do it."`` and
+    ``"step 1  do it"`` collapse to one. The original text of the first
+    occurrence is preserved verbatim; later near-duplicates are removed.
+
+    Parameters
+    ----------
+    case_insensitive:
+        Lowercase before comparing (default True).
+    ignore_punctuation:
+        Treat punctuation as insignificant when comparing (default True).
+    min_length:
+        Lines whose normalized form is shorter than this many characters are
+        never deduped (so short structural lines like ``"---"`` or ``"}"`` are
+        kept). Default 1 (only fully-empty normalized lines are exempt).
+    """
+    seen = set()
+    out: List[str] = []
+    for line in (text or "").split("\n"):
+        norm = _normalize_line(line, case_insensitive, ignore_punctuation)
+        if not norm or len(norm) < min_length:
+            out.append(line)
+            continue
+        if norm in seen:
+            continue
+        seen.add(norm)
         out.append(line)
     return "\n".join(out)
 
@@ -359,6 +417,7 @@ def truncate_middle(
 STRATEGIES = {
     "strip_whitespace": strip_whitespace,
     "dedupe_lines": dedupe_lines,
+    "dedupe_near_lines": dedupe_near_lines,
     "remove_filler": remove_filler,
     "collapse_json_whitespace": collapse_json_whitespace,
     "strip_code_comments": strip_code_comments,
