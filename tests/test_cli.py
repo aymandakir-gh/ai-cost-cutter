@@ -68,6 +68,23 @@ def test_compress_stats_only_suppresses_text(capsys):
     assert "tokens" in captured.err
 
 
+def test_compress_strip_comments_flag(capsys):
+    prompt = "```python\nx = 1  # a comment to remove\ny = 2\n```"
+    rc = main(["compress", "--prompt", prompt, "--strip-comments"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "a comment to remove" not in captured.out
+    assert "x = 1" in captured.out
+    assert "smaller" in captured.err
+
+
+def test_compress_minify_json_flag(capsys):
+    rc = main(["compress", "--prompt", 'data {"a":  1,  "b": 2}', "--minify-json"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert '{"a":1,"b":2}' in captured.out
+
+
 def test_dashboard_from_ledger(tmp_path, capsys):
     from ai_cost_cutter.ledger import Ledger
 

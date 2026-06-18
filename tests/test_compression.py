@@ -8,6 +8,7 @@ from ai_cost_cutter.compression import (
     dedupe_lines,
     prune_messages,
     remove_filler,
+    strip_code_comments,
     strip_whitespace,
     truncate_middle,
 )
@@ -131,6 +132,80 @@ def test_collapse_json_whitespace_via_registry():
     result = compress(text, strategies=["collapse_json_whitespace"])
     assert '"event":"click"' in result.compressed
     assert result.tokens_after <= result.tokens_before
+
+
+def test_strip_code_comments_python():
+    text = (
+        "Look:\n```python\n"
+        "x = 1  # set x\n"
+        "# a whole-line comment\n"
+        "y = 2\n"
+        "```\nthanks"
+    )
+    out = strip_code_comments(text)
+    assert "# set x" not in out
+    assert "whole-line comment" not in out
+    assert "x = 1" in out
+    assert "y = 2" in out
+    # Prose and fences are preserved.
+    assert out.startswith("Look:")
+    assert out.rstrip().endswith("thanks")
+    assert "```python" in out
+
+
+def test_strip_code_comments_preserves_hash_in_string():
+    text = '```python\ns = "a # b"\nz = 1  # drop me\n```'
+    out = strip_code_comments(text)
+    assert '"a # b"' in out  # the # inside the string survives
+    assert "# drop me" not in out
+
+
+def test_strip_code_comments_c_family_line_and_block():
+    text = (
+        "```js\n"
+        "const u = \"http://x\";\n"
+        "/* a block\n   comment */\n"
+        "foo(); // trailing\n"
+        "```"
+    )
+    out = strip_code_comments(text)
+    assert "a block" not in out
+    assert "// trailing" not in out
+    assert "// trailing" not in out
+    assert 'const u = "http://x";' in out  # // inside string literal preserved
+    assert "foo();" in out
+
+
+def test_strip_code_comments_unknown_language_untouched():
+    text = "```unknownlang\nsome += code # keep this\n```"
+    assert strip_code_comments(text) == text
+
+
+def test_strip_code_comments_no_fence_is_noop():
+    text = "inline # hash and // slashes outside any fence"
+    assert strip_code_comments(text) == text
+
+
+def test_strip_code_comments_does_not_touch_prose_outside_fence():
+    text = "before # not code\n```python\na = 1  # comment\n```\nafter // also prose"
+    out = strip_code_comments(text)
+    assert "before # not code" in out
+    assert "after // also prose" in out
+    assert "# comment" not in out
+
+
+def test_strip_code_comments_via_registry_reduces_tokens():
+    text = "```python\nx = 1  # a long explanatory comment here\ny = 2\n```"
+    result = compress(text, strategies=["strip_code_comments"])
+    assert result.tokens_after < result.tokens_before
+    assert "explanatory comment" not in result.compressed
+
+
+def test_strip_code_comments_sql_dashes():
+    text = "```sql\nSELECT 1; -- pick one\n```"
+    out = strip_code_comments(text)
+    assert "-- pick one" not in out
+    assert "SELECT 1;" in out
 
 
 def test_prune_messages_noop_when_under_budget():

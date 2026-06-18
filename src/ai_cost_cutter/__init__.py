@@ -38,6 +38,7 @@ from .compression import (
     dedupe_lines,
     prune_messages,
     remove_filler,
+    strip_code_comments,
     strip_whitespace,
     truncate_middle,
 )
@@ -100,6 +101,7 @@ __all__ = [
     "dedupe_lines",
     "remove_filler",
     "collapse_json_whitespace",
+    "strip_code_comments",
     "truncate_middle",
     "prune_messages",
     "MessagePruneResult",

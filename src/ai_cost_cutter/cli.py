@@ -83,6 +83,16 @@ def _add_compress_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--dedupe", action="store_true", help="drop duplicate lines")
     p.add_argument("--filler", action="store_true", help="remove filler phrases")
     p.add_argument(
+        "--minify-json",
+        action="store_true",
+        help="losslessly minify JSON blocks embedded in the prompt",
+    )
+    p.add_argument(
+        "--strip-comments",
+        action="store_true",
+        help="remove comments inside fenced code blocks (lossy)",
+    )
+    p.add_argument(
         "--stats-only",
         action="store_true",
         help="print only the savings summary (no compressed text on stdout)",
@@ -106,6 +116,10 @@ def _cmd_compress(args: argparse.Namespace) -> int:
         strategies.append("dedupe_lines")
     if args.filler:
         strategies.append("remove_filler")
+    if getattr(args, "minify_json", False):
+        strategies.append("collapse_json_whitespace")
+    if getattr(args, "strip_comments", False):
+        strategies.append("strip_code_comments")
 
     result = compress(
         text, strategies=strategies, max_tokens=args.max_tokens, model=args.model
