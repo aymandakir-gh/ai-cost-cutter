@@ -32,6 +32,13 @@ from .pricing import (
     known_models,
     register_price,
 )
+from .router import (
+    Attempt,
+    RouteResult,
+    Router,
+    confidence_from_logprobs,
+    heuristic_confidence,
+)
 from .tokens import count_messages_tokens, count_tokens
 
 __all__ = [
@@ -51,4 +58,10 @@ __all__ = [
     # tokens
     "count_tokens",
     "count_messages_tokens",
+    # router
+    "Router",
+    "RouteResult",
+    "Attempt",
+    "heuristic_confidence",
+    "confidence_from_logprobs",
 ]
