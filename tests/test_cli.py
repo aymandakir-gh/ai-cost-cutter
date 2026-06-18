@@ -68,6 +68,33 @@ def test_compress_stats_only_suppresses_text(capsys):
     assert "tokens" in captured.err
 
 
+def test_dashboard_from_ledger(tmp_path, capsys):
+    from ai_cost_cutter.ledger import Ledger
+
+    path = str(tmp_path / "l.jsonl")
+    ledger = Ledger(path)
+    ledger.record_call("gpt-4o", cost=0.01, baseline_cost=0.05)
+    ledger.record_cache_hit("gpt-4o", avoided_cost=0.01)
+
+    rc = main(["dashboard", "--ledger", path, "--json"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["total_calls"] == 2
+    assert data["savings"] > 0
+
+
+def test_dashboard_html_export(tmp_path):
+    from ai_cost_cutter.ledger import Ledger
+
+    path = str(tmp_path / "l.jsonl")
+    Ledger(path).record_call("gpt-4o", cost=0.01, baseline_cost=0.05)
+    out = str(tmp_path / "dash.html")
+    rc = main(["dashboard", "--ledger", path, "--html", out])
+    assert rc == 0
+    with open(out, encoding="utf-8") as fh:
+        assert "Cost dashboard" in fh.read()
+
+
 def test_no_command_prints_help(capsys):
     rc = main([])
     assert rc == 1

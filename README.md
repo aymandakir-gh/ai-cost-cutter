@@ -92,6 +92,21 @@ print(f"{result.reduction:.0%} fewer tokens")   # then send result.compressed
 cat prompt.txt | aicc compress --dedupe --filler --max-tokens 2000
 ```
 
+Track spend and savings with a ledger + dashboard:
+
+```python
+from ai_cost_cutter import Ledger, build_report
+
+ledger = Ledger("usage.jsonl")           # persists across runs
+ledger.record_route(router.route("..."))  # or record_call(...) / record_cache_hit(...)
+print(build_report(ledger).render_text())
+```
+
+```bash
+aicc dashboard --ledger usage.jsonl              # text report
+aicc dashboard --ledger usage.jsonl --html out.html
+```
+
 ## Roadmap
 
 - **v0.1** — `estimator` + `router`

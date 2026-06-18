@@ -120,6 +120,34 @@ def _cmd_compress(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_dashboard_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "dashboard", help="summarize spend and savings from a usage ledger"
+    )
+    p.add_argument(
+        "--ledger", required=True, help="path to a JSONL ledger file"
+    )
+    p.add_argument("--json", action="store_true", help="emit JSON")
+    p.add_argument("--html", help="write an HTML dashboard to this path")
+    p.set_defaults(func=_cmd_dashboard)
+
+
+def _cmd_dashboard(args: argparse.Namespace) -> int:
+    from .dashboard import build_report
+    from .ledger import Ledger
+
+    report = build_report(Ledger(args.ledger))
+    if args.html:
+        with open(args.html, "w", encoding="utf-8") as fh:
+            fh.write(report.render_html())
+        print(f"wrote {args.html}", file=sys.stderr)
+    if args.json:
+        print(json.dumps(report.as_dict(), indent=2))
+    elif not args.html:
+        print(report.render_text())
+    return 0
+
+
 def _add_models_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("models", help="list known models and their prices")
     p.add_argument("--json", action="store_true", help="emit JSON")
@@ -167,6 +195,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
     _add_estimate_parser(sub)
     _add_compress_parser(sub)
+    _add_dashboard_parser(sub)
     _add_models_parser(sub)
     return parser
 
