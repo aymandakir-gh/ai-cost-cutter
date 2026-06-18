@@ -24,6 +24,12 @@ from .estimator import (
     estimate_messages,
     estimate_tokens,
 )
+from .cache import (
+    CacheStats,
+    MemoryBackend,
+    ResponseCache,
+    SQLiteBackend,
+)
 from .pricing import (
     DEFAULT_PRICES,
     ModelPrice,
@@ -64,4 +70,9 @@ __all__ = [
     "Attempt",
     "heuristic_confidence",
     "confidence_from_logprobs",
+    # cache
+    "ResponseCache",
+    "CacheStats",
+    "MemoryBackend",
+    "SQLiteBackend",
 ]
