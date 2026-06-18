@@ -84,6 +84,16 @@ cached("gpt-4o", "Hello")        # hit  -> free
 print(f"hit rate {cache.stats.hit_rate:.0%}, saved ${cache.stats.saved_cost:.4f}")
 ```
 
+Raise the hit rate with opt-in, deterministic key normalization — map
+trivially-different prompts ("What is 2+2?" / "what is 2 + 2") to one key:
+
+```python
+ResponseCache(normalize="aggressive")  # casefold + strip punctuation/accents
+ResponseCache(normalize="stemming")    # + light suffix stripping (run/running)
+ResponseCache(normalize="whitespace")  # default; collapse whitespace only
+ResponseCache(normalize="none")        # key on the raw text
+```
+
 Compress prompts and context before sending them:
 
 ```python

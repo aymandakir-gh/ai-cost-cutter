@@ -17,23 +17,33 @@ Example::
     cached("gpt-4o", "Hello")          # miss -> calls provider
     cached("gpt-4o", "Hello")          # hit  -> free
     print(cache.stats.hit_rate, cache.stats.saved_cost)
+
+Key normalization (opt-in, deterministic) raises the hit rate by mapping
+trivially-different prompts to the same key::
+
+    # casefold + strip punctuation/accents (and optionally stem):
+    cache = ResponseCache(normalize="aggressive")
+    cache = ResponseCache(normalize="stemming")
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Union
 
 from .estimator import estimate_tokens
 from .pricing import ModelPrice
 from .tokens import count_tokens
 
 Provider = Callable[[str, str], object]
+Normalizer = Callable[[str], str]
 
 
 def default_normalize(text: str) -> str:
@@ -43,6 +53,93 @@ def default_normalize(text: str) -> str:
     ``normalize=None`` to :class:`ResponseCache` to key on the raw text.
     """
     return " ".join((text or "").split())
+
+
+_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
+
+# Conservative, deterministic suffix stripping. Order matters: longest first.
+_STEM_SUFFIXES = ("ingly", "edly", "ies", "ing", "ed", "ly", "es", "s")
+
+
+def _stem_word(word: str) -> str:
+    """A tiny, deterministic suffix stripper (not a full stemmer).
+
+    Trims a few common English inflectional suffixes so ``"running"`` and
+    ``"run"`` collide. Conservative: never shortens a word below three letters.
+    After stripping ``-ing``/``-ed`` it collapses a doubled final consonant
+    (``running`` -> ``runn`` -> ``run``).
+    """
+    for suffix in _STEM_SUFFIXES:
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            stem = word[: -len(suffix)]
+            if suffix in ("ing", "ed") and len(stem) >= 3:
+                # Undo consonant doubling: "runn" -> "run", "stopp" -> "stop".
+                if (
+                    stem[-1] == stem[-2]
+                    and stem[-1] not in "aeiou"
+                ):
+                    stem = stem[:-1]
+            return stem
+    return word
+
+
+def normalize_key(
+    text: str,
+    *,
+    casefold: bool = True,
+    strip_punctuation: bool = True,
+    strip_accents: bool = True,
+    stem: bool = False,
+) -> str:
+    """Deterministically normalize ``text`` for cache keying.
+
+    Designed to raise the cache hit rate by mapping trivially-different prompts
+    ("What is 2+2?" / "what is 2 + 2") to the same key. Every step is opt-out:
+
+    - ``casefold``         : Unicode-aware lowercasing (default on).
+    - ``strip_punctuation``: drop punctuation/symbols (default on).
+    - ``strip_accents``    : fold accents (café -> cafe) (default on).
+    - ``stem``             : trim common English suffixes (default off).
+
+    Whitespace is always collapsed. Purely textual and deterministic, so the
+    same input always yields the same key across processes and runs.
+    """
+    out = text or ""
+    # Normalize Unicode form first so casefold/accents behave consistently.
+    out = unicodedata.normalize("NFKC", out)
+    if strip_accents:
+        out = "".join(
+            ch
+            for ch in unicodedata.normalize("NFKD", out)
+            if not unicodedata.combining(ch)
+        )
+    if casefold:
+        out = out.casefold()
+    if strip_punctuation:
+        out = _PUNCT_RE.sub(" ", out)
+    words = out.split()
+    if stem:
+        words = [_stem_word(w) for w in words]
+    return " ".join(words)
+
+
+def aggressive_normalize(text: str) -> str:
+    """Strong normalizer: casefold + strip punctuation/accents (no stemming)."""
+    return normalize_key(text)
+
+
+def stemming_normalize(text: str) -> str:
+    """Strongest built-in normalizer: :func:`aggressive_normalize` plus stemming."""
+    return normalize_key(text, stem=True)
+
+
+# Named, deterministic normalization modes selectable on :class:`ResponseCache`.
+_NORMALIZE_MODES: Dict[str, Optional[Normalizer]] = {
+    "none": None,
+    "whitespace": default_normalize,
+    "aggressive": aggressive_normalize,
+    "stemming": stemming_normalize,
+}
 
 
 def _coerce_text(raw: object) -> str:
@@ -168,17 +265,38 @@ class ResponseCache:
         backend: Optional[object] = None,
         ttl: Optional[float] = None,
         namespace: str = "",
-        normalize: Optional[Callable[[str], str]] = default_normalize,
+        normalize: Union[str, Normalizer, None] = default_normalize,
         prices: Optional[Dict[str, ModelPrice]] = None,
         time_fn: Callable[[], float] = time.time,
     ) -> None:
         self.backend = backend if backend is not None else MemoryBackend()
         self.ttl = ttl
         self.namespace = namespace
-        self.normalize = normalize or (lambda x: x)
+        self.normalize = self._resolve_normalize(normalize)
         self.prices = prices
         self._time = time_fn
         self.stats = CacheStats()
+
+    @staticmethod
+    def _resolve_normalize(
+        normalize: Union[str, Normalizer, None]
+    ) -> Normalizer:
+        """Resolve ``normalize`` (a mode name, a callable, or None) to a fn.
+
+        Modes: ``"none"`` (raw), ``"whitespace"`` (default), ``"aggressive"``
+        (casefold + strip punctuation/accents), ``"stemming"`` (aggressive plus
+        light suffix stripping). Each mode is deterministic.
+        """
+        if isinstance(normalize, str):
+            try:
+                fn = _NORMALIZE_MODES[normalize]
+            except KeyError:
+                raise ValueError(
+                    f"unknown normalize mode {normalize!r}; choose from "
+                    f"{sorted(_NORMALIZE_MODES)} or pass a callable/None"
+                )
+            return fn or (lambda x: x)
+        return normalize or (lambda x: x)
 
     def make_key(self, model: str, prompt: str, **params: object) -> str:
         norm = self.normalize(prompt)

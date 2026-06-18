@@ -4,7 +4,10 @@ from ai_cost_cutter.cache import (
     MemoryBackend,
     ResponseCache,
     SQLiteBackend,
+    aggressive_normalize,
     default_normalize,
+    normalize_key,
+    stemming_normalize,
 )
 
 
@@ -29,6 +32,84 @@ def test_normalization_can_be_disabled():
     cache = ResponseCache(normalize=None)
     cache.set("gpt-4o", "what  is 2+2?", "4")
     assert cache.get("gpt-4o", "what is 2+2?") is None  # raw text differs
+
+
+# --- key normalization modes ----------------------------------------------
+
+
+def test_normalize_key_casefold_punctuation_accents():
+    assert normalize_key("What is 2+2?") == "what is 2 2"
+    assert normalize_key("Café!") == "cafe"
+    # Idempotent and deterministic.
+    assert normalize_key("Hello,  WORLD") == normalize_key("hello world")
+
+
+def test_normalize_key_toggles():
+    # With punctuation kept, only case/whitespace/accents are touched.
+    assert normalize_key("Don't!", strip_punctuation=False) == "don't!"
+    assert normalize_key("CAFÉ", casefold=False, strip_accents=True) == "CAFE"
+
+
+def test_aggressive_and_stemming_normalizers():
+    assert aggressive_normalize("Running, Fast!") == "running fast"
+    # "running" -> strip "ing" -> "runn" -> undo doubling -> "run"; "quickly" -> "quick".
+    assert stemming_normalize("running quickly") == "run quick"
+    # Stemming never shortens below three letters.
+    assert stemming_normalize("is as") == "is as"
+
+
+def test_aggressive_mode_collapses_punctuation_and_case_to_one_key():
+    cache = ResponseCache(normalize="aggressive")
+    cache.set("gpt-4o", "What is 2+2?", "4")
+    # Different punctuation/case/spacing -> same normalized key -> hit.
+    assert cache.get("gpt-4o", "what  is 2 + 2") == "4"
+
+
+def test_aggressive_mode_raises_hit_rate_vs_whitespace():
+    # A set of prompts that differ only in case/punctuation/whitespace.
+    variants = [
+        "What is the capital of France?",
+        "what is the capital of france",
+        "What  is the Capital of France???",
+        "WHAT IS THE CAPITAL OF FRANCE",
+    ]
+
+    def run(mode):
+        cache = ResponseCache(normalize=mode)
+        cached = cache.wrap(lambda m, p: "Paris")
+        for v in variants:
+            cached("gpt-4o", v)
+        return cache.stats.hit_rate
+
+    whitespace_rate = run("whitespace")
+    aggressive_rate = run("aggressive")
+    # Whitespace-only keying treats the case/punctuation variants as distinct.
+    assert whitespace_rate == 0.0
+    # Aggressive normalization collapses them: 1 miss + 3 hits.
+    assert aggressive_rate == pytest.approx(3 / 4)
+
+
+def test_stemming_mode_collapses_inflections():
+    cache = ResponseCache(normalize="stemming")
+    cache.set("gpt-4o", "summarize the running logs", "ok")
+    assert cache.get("gpt-4o", "Summarize the run log!") == "ok"
+
+
+def test_normalize_mode_none_uses_raw_text():
+    cache = ResponseCache(normalize="none")
+    cache.set("gpt-4o", "Hello", "hi")
+    assert cache.get("gpt-4o", "hello") is None  # raw text differs
+
+
+def test_unknown_normalize_mode_raises():
+    with pytest.raises(ValueError):
+        ResponseCache(normalize="bogus-mode")
+
+
+def test_callable_normalizer_still_supported():
+    cache = ResponseCache(normalize=str.upper)
+    cache.set("gpt-4o", "hello", "hi")
+    assert cache.get("gpt-4o", "HELLO") == "hi"
 
 
 def test_different_model_is_a_different_key():
