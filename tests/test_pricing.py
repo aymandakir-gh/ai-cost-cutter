@@ -1,11 +1,14 @@
 import pytest
 
+from ai_cost_cutter.estimator import estimate_tokens
 from ai_cost_cutter.pricing import (
     DEFAULT_PRICES,
     ModelPrice,
     UnknownModelError,
     get_price,
     known_models,
+    known_providers,
+    models_for_provider,
     register_price,
 )
 
@@ -58,3 +61,83 @@ def test_negative_price_rejected():
 def test_local_models_are_free():
     assert get_price("local").input_per_1m == 0.0
     assert get_price("local").output_per_1m == 0.0
+
+
+# --- expanded multi-provider price table ----------------------------------
+
+EXPECTED_PROVIDERS = {
+    "openai",
+    "anthropic",
+    "google",
+    "mistral",
+    "cohere",
+    "deepseek",
+    "xai",
+    "groq",
+    "local",
+}
+
+
+def test_default_table_covers_all_major_providers():
+    assert EXPECTED_PROVIDERS <= known_providers()
+
+
+# A representative model from each newly added provider.
+_SAMPLE_MODELS = [
+    "gpt-4.1",
+    "o3-mini",
+    "claude-opus-4",
+    "claude-3-7-sonnet",
+    "gemini-2.5-pro",
+    "gemini-1.5-flash",
+    "mistral-large",
+    "codestral",
+    "command-r-plus",
+    "deepseek-chat",
+    "grok-4",
+    "llama-3.3-70b-versatile",
+    "gemma2-9b-it",
+]
+
+
+@pytest.mark.parametrize("model", _SAMPLE_MODELS)
+def test_new_models_resolve(model):
+    price = get_price(model)
+    assert isinstance(price, ModelPrice)
+    assert price.provider != "unknown"
+    assert price.input_per_1m >= 0
+    assert price.output_per_1m >= 0
+
+
+@pytest.mark.parametrize("model", _SAMPLE_MODELS)
+def test_new_models_cost_estimate(model):
+    # 1M input + 1M output tokens should equal input_per_1m + output_per_1m.
+    price = get_price(model)
+    est = estimate_tokens(model, 1_000_000, 1_000_000)
+    assert est.total_cost == pytest.approx(price.input_per_1m + price.output_per_1m)
+
+
+def test_new_models_resolve_dated_suffixes():
+    # Dated/variant ids resolve to the base entry by longest-prefix match.
+    assert get_price("gemini-1.5-flash-002") is get_price("gemini-1.5-flash")
+    assert get_price("claude-3-5-sonnet-20241022") is get_price("claude-3-5-sonnet")
+
+
+def test_known_providers_and_models_for_provider_agree():
+    for provider in known_providers():
+        models = models_for_provider(provider)
+        assert models  # every advertised provider has at least one model
+        assert all(mp.provider == provider for mp in models.values())
+
+
+def test_models_for_provider_filters():
+    google = models_for_provider("google")
+    assert "gemini-2.5-pro" in google
+    assert "gpt-4o" not in google
+
+
+def test_every_default_price_is_well_formed():
+    for name, mp in DEFAULT_PRICES.items():
+        assert isinstance(name, str) and name
+        assert mp.input_per_1m >= 0 and mp.output_per_1m >= 0
+        assert mp.provider

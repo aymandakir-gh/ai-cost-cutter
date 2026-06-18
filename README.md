@@ -123,8 +123,11 @@ aicc benchmark        # see benchmarks/README.md for how it stays honest
 - ✅ **v0.3** — `dashboard` + reproducible cost-cut benchmark (77.9% cut proven)
 
 > Prices in `pricing.py` are approximate public list prices and are fully
-> overridable. The savings the toolkit produces come from *mechanisms*
-> (routing, caching, compression), not from any particular price table.
+> overridable. The bundled table tags each model with its provider and covers
+> OpenAI, Anthropic, Google (Gemini), Mistral, Cohere, DeepSeek, xAI (Grok),
+> and Groq-hosted open models — plus a free `local` tier. The savings the
+> toolkit produces come from *mechanisms* (routing, caching, compression), not
+> from any particular price table.
 
 ## License
 
