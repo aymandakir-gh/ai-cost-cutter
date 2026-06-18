@@ -18,7 +18,7 @@ function, so OpenAI, Anthropic, or a local model all work the same way and the
 whole toolkit is testable offline.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from .estimator import (
     CostEstimate,

@@ -54,6 +54,15 @@ est = estimate("gpt-4o", "Summarize this document...", expected_output_tokens=30
 print(f"${est.total_cost:.4f}")
 ```
 
+Compare one prompt's cost across models side-by-side (cheapest first):
+
+```bash
+aicc price-compare --prompt "Summarize this..." -m gpt-4o -m gpt-4o-mini -m gemini-1.5-flash
+aicc price-compare --input-tokens 1000 --output-tokens 500 --calls 10000 --json
+```
+
+With no `-m`, it compares every model in the price table.
+
 Route cheap-first and escalate only when the cheap model is unsure:
 
 ```python
