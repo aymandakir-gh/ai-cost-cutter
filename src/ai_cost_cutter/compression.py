@@ -6,13 +6,16 @@ chat-history pruning that respects a token budget.
 
 Strategies
 ----------
-- ``strip_whitespace`` : remove trailing whitespace and collapse blank-line
-  runs. Lossless for content; on by default.
-- ``dedupe_lines``     : drop repeated identical lines (common in stuffed
-  context). Opt-in.
-- ``remove_filler``    : remove/shorten common filler phrases. Opt-in, lossy.
-- ``truncate_middle``  : cap text to a token budget by keeping the head and
-  tail and omitting the middle.
+- ``strip_whitespace``          : remove trailing whitespace and collapse
+  blank-line runs. Lossless for content; on by default.
+- ``dedupe_lines``              : drop repeated identical lines (common in
+  stuffed context). Opt-in.
+- ``remove_filler``             : remove/shorten common filler phrases. Opt-in,
+  lossy.
+- ``collapse_json_whitespace``  : minify JSON objects/arrays embedded in the
+  prompt (lossless — semantically identical JSON). Opt-in.
+- ``truncate_middle``           : cap text to a token budget by keeping the head
+  and tail and omitting the middle.
 
 Example::
 
@@ -24,6 +27,7 @@ Example::
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Callable, List, Mapping, Optional, Sequence, Union
@@ -98,6 +102,82 @@ def remove_filler(text: str) -> str:
     return out.strip()
 
 
+def _find_json_spans(text: str) -> List[tuple]:
+    """Return ``(start, end)`` spans of top-level balanced ``{}``/``[]`` blocks.
+
+    Brackets inside JSON string literals are ignored, so a quoted ``"{"`` does
+    not throw off the balance count. Only the outermost blocks are returned;
+    nested structures are handled by JSON parsing the whole span.
+    """
+    spans: List[tuple] = []
+    i = 0
+    n = len(text)
+    openers = {"{": "}", "[": "]"}
+    while i < n:
+        ch = text[i]
+        if ch in openers:
+            close = openers[ch]
+            depth = 0
+            j = i
+            in_str = False
+            escape = False
+            while j < n:
+                c = text[j]
+                if in_str:
+                    if escape:
+                        escape = False
+                    elif c == "\\":
+                        escape = True
+                    elif c == '"':
+                        in_str = False
+                elif c == '"':
+                    in_str = True
+                elif c == ch:
+                    depth += 1
+                elif c == close:
+                    depth -= 1
+                    if depth == 0:
+                        spans.append((i, j + 1))
+                        break
+                j += 1
+            # Resume scanning after this block (or after this char if unbalanced).
+            i = (j + 1) if (spans and spans[-1][0] == i) else (i + 1)
+        else:
+            i += 1
+    return spans
+
+
+def collapse_json_whitespace(text: str) -> str:
+    """Losslessly minify JSON objects/arrays embedded in ``text``.
+
+    Finds balanced ``{...}`` / ``[...]`` spans, and for each that parses as
+    valid JSON, replaces it with its compact form (no insignificant
+    whitespace). Non-JSON brackets and surrounding prose are left untouched, so
+    the transform is lossless: the minified JSON is semantically identical.
+    """
+    if not text or ("{" not in text and "[" not in text):
+        return text
+    spans = _find_json_spans(text)
+    if not spans:
+        return text
+    out: List[str] = []
+    last = 0
+    for start, end in spans:
+        chunk = text[start:end]
+        try:
+            parsed = json.loads(chunk)
+        except (ValueError, RecursionError):
+            continue
+        compact = json.dumps(parsed, separators=(",", ":"), ensure_ascii=False)
+        out.append(text[last:start])
+        out.append(compact)
+        last = end
+    if not out:
+        return text
+    out.append(text[last:])
+    return "".join(out)
+
+
 def truncate_middle(
     text: str,
     max_tokens: int,
@@ -142,6 +222,7 @@ STRATEGIES = {
     "strip_whitespace": strip_whitespace,
     "dedupe_lines": dedupe_lines,
     "remove_filler": remove_filler,
+    "collapse_json_whitespace": collapse_json_whitespace,
 }
 
 DEFAULT_STRATEGIES = ("strip_whitespace",)
