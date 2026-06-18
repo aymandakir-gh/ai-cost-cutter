@@ -6,6 +6,7 @@ from ai_cost_cutter.compression import (
     collapse_json_whitespace,
     compress,
     dedupe_lines,
+    dedupe_near_lines,
     prune_messages,
     remove_filler,
     strip_code_comments,
@@ -30,6 +31,56 @@ def test_strip_whitespace_empty():
 def test_dedupe_lines_removes_repeats_keeps_order():
     text = "alpha\nbeta\nalpha\ngamma\nbeta"
     assert dedupe_lines(text) == "alpha\nbeta\ngamma"
+
+
+def test_dedupe_near_lines_collapses_case_punct_whitespace_variants():
+    text = "Step 1: do the thing.\nstep 1   do the thing\nStep 2: finish."
+    out = dedupe_near_lines(text)
+    lines = out.split("\n")
+    assert lines == ["Step 1: do the thing.", "Step 2: finish."]
+    # First occurrence is preserved verbatim.
+    assert "Step 1: do the thing." in out
+
+
+def test_dedupe_near_lines_keeps_first_verbatim():
+    text = "  Hello WORLD  \nhello world"
+    out = dedupe_near_lines(text)
+    assert out == "  Hello WORLD  "
+
+
+def test_dedupe_near_lines_respects_case_sensitivity_when_disabled():
+    text = "Foo\nfoo"
+    # Case-sensitive comparison: these differ, so both kept.
+    out = dedupe_near_lines(text, case_insensitive=False, ignore_punctuation=False)
+    assert out == "Foo\nfoo"
+
+
+def test_dedupe_near_lines_punctuation_toggle():
+    text = "a, b, c\na b c"
+    assert dedupe_near_lines(text, ignore_punctuation=True) == "a, b, c"
+    # With punctuation significant, the two normalized forms differ.
+    assert dedupe_near_lines(text, ignore_punctuation=False) == "a, b, c\na b c"
+
+
+def test_dedupe_near_lines_min_length_protects_short_lines():
+    text = "}\n}\n}\nlong unique line here"
+    # Short structural lines are not deduped.
+    out = dedupe_near_lines(text, min_length=3)
+    assert out.count("}") == 3
+
+
+def test_dedupe_near_lines_keeps_blank_lines():
+    text = "a\n\n\na near\nA NEAR"
+    out = dedupe_near_lines(text)
+    # Blank lines are never treated as duplicates.
+    assert out == "a\n\n\na near"
+
+
+def test_dedupe_near_lines_via_registry_reduces_tokens():
+    text = "The Answer Is 42.\nthe answer is 42\nUnique tail line."
+    result = compress(text, strategies=["dedupe_near_lines"])
+    assert result.tokens_after < result.tokens_before
+    assert result.compressed.count("nswer") == 1
 
 
 def test_remove_filler_shortens_phrases():

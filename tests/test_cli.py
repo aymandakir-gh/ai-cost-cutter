@@ -78,6 +78,14 @@ def test_compress_strip_comments_flag(capsys):
     assert "smaller" in captured.err
 
 
+def test_compress_dedupe_near_flag(capsys):
+    rc = main(["compress", "--prompt", "Hello World.\nhello world", "--dedupe-near"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "Hello World."
+    assert "smaller" in captured.err
+
+
 def test_compress_minify_json_flag(capsys):
     rc = main(["compress", "--prompt", 'data {"a":  1,  "b": 2}', "--minify-json"])
     assert rc == 0
