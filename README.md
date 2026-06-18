@@ -68,6 +68,18 @@ print(f"escalated={result.escalated} saved={result.savings_pct:.0%}")
 heuristic by default — swap in logprobs or a judge model), and escalates only
 when confidence is below the threshold.
 
+Cache repeated calls so you never pay twice:
+
+```python
+from ai_cost_cutter.cache import ResponseCache
+
+cache = ResponseCache()          # or SQLiteBackend(path) to persist
+cached = cache.wrap(call)        # wraps your provider
+cached("gpt-4o", "Hello")        # miss -> calls the model
+cached("gpt-4o", "Hello")        # hit  -> free
+print(f"hit rate {cache.stats.hit_rate:.0%}, saved ${cache.stats.saved_cost:.4f}")
+```
+
 ## Roadmap
 
 - **v0.1** — `estimator` + `router`
