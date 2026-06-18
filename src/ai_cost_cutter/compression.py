@@ -14,6 +14,8 @@ Strategies
   lossy.
 - ``collapse_json_whitespace``  : minify JSON objects/arrays embedded in the
   prompt (lossless — semantically identical JSON). Opt-in.
+- ``strip_code_comments``       : remove comments inside fenced code blocks,
+  language-aware. Opt-in, lossy.
 - ``truncate_middle``           : cap text to a token budget by keeping the head
   and tail and omitting the middle.
 
@@ -178,6 +180,142 @@ def collapse_json_whitespace(text: str) -> str:
     return "".join(out)
 
 
+# --- code-comment stripping -----------------------------------------------
+
+# Single-line comment markers per language family.
+_HASH_LANGS = {
+    "python", "py", "ruby", "rb", "bash", "sh", "shell", "zsh", "yaml", "yml",
+    "toml", "ini", "perl", "pl", "r", "makefile", "make", "dockerfile",
+    "nim", "elixir", "ex", "exs", "coffee", "coffeescript",
+}
+_SLASH_LANGS = {
+    "javascript", "js", "jsx", "typescript", "ts", "tsx", "java", "c", "cpp",
+    "c++", "cc", "h", "hpp", "cs", "csharp", "go", "golang", "rust", "rs",
+    "swift", "kotlin", "kt", "scala", "php", "dart", "objective-c", "objc",
+}  # support // line comments and /* */ block comments
+_DASH_LANGS = {"sql", "lua", "haskell", "hs", "ada", "elm"}
+
+# Map a language to its (line_marker, supports_block_comment) profile.
+def _comment_profile(lang: str):
+    lang = (lang or "").strip().lower()
+    if lang in _HASH_LANGS:
+        return ("#", False)
+    if lang in _SLASH_LANGS:
+        return ("//", True)
+    if lang in _DASH_LANGS:
+        return ("--", False)
+    return None
+
+
+# Matches string literals (single, double, or backtick) so we can skip over
+# comment markers that appear inside them.
+_STRING_RE = re.compile(
+    r"""'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`""",
+    re.DOTALL,
+)
+
+
+def _strip_line_comment(line: str, marker: str) -> str:
+    """Remove a trailing ``marker`` comment from ``line``, respecting strings."""
+    if marker not in line:
+        return line
+    # Walk the line, tracking string state, to find the first marker that is
+    # not inside a string literal.
+    i = 0
+    n = len(line)
+    mlen = len(marker)
+    while i < n:
+        ch = line[i]
+        if ch in "'\"`":
+            m = _STRING_RE.match(line, i)
+            if m:
+                i = m.end()
+                continue
+            i += 1
+            continue
+        if line.startswith(marker, i):
+            return line[:i].rstrip()
+        i += 1
+    return line
+
+
+def _strip_block_comments(code: str) -> str:
+    """Remove ``/* ... */`` block comments outside of string literals."""
+    if "/*" not in code:
+        return code
+    out: List[str] = []
+    i = 0
+    n = len(code)
+    while i < n:
+        ch = code[i]
+        if ch in "'\"`":
+            m = _STRING_RE.match(code, i)
+            if m:
+                out.append(m.group(0))
+                i = m.end()
+                continue
+            out.append(ch)
+            i += 1
+            continue
+        if code.startswith("/*", i):
+            end = code.find("*/", i + 2)
+            if end == -1:
+                # Unterminated block comment: drop the rest defensively.
+                break
+            i = end + 2
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _strip_comments_in_code(code: str, lang: str) -> str:
+    profile = _comment_profile(lang)
+    if profile is None:
+        return code
+    marker, has_block = profile
+    if has_block:
+        code = _strip_block_comments(code)
+    out_lines: List[str] = []
+    for line in code.split("\n"):
+        stripped = _strip_line_comment(line, marker)
+        # Drop lines that became empty *only* because they were a full comment.
+        if stripped.strip() == "" and line.strip() != "":
+            continue
+        out_lines.append(stripped)
+    return "\n".join(out_lines)
+
+
+_FENCE_RE = re.compile(
+    r"(?P<fence>^[ \t]*(?:```+|~~~+))[ \t]*(?P<info>[^\n`]*)\n"
+    r"(?P<body>.*?)"
+    r"(?P<close>^[ \t]*(?:```+|~~~+)[ \t]*$)",
+    re.DOTALL | re.MULTILINE,
+)
+
+
+def strip_code_comments(text: str) -> str:
+    """Remove comments inside fenced code blocks (language-aware).
+
+    Opt-in and **lossy**: comments can carry intent, so only enable this when
+    you are confident the model does not need them. Only fenced blocks
+    (```` ```lang ````` … ```` ``` ````) with a recognised language are touched;
+    prose and unknown languages are left untouched. Comment markers inside
+    string literals are preserved.
+    """
+    if not text or ("```" not in text and "~~~" not in text):
+        return text
+
+    def repl(m: "re.Match") -> str:
+        info = m.group("info").strip()
+        lang = info.split()[0] if info else ""
+        body = m.group("body")
+        cleaned = _strip_comments_in_code(body, lang)
+        return f"{m.group('fence')}{m.group('info')}\n{cleaned}{m.group('close')}"
+
+    return _FENCE_RE.sub(repl, text)
+
+
 def truncate_middle(
     text: str,
     max_tokens: int,
@@ -223,6 +361,7 @@ STRATEGIES = {
     "dedupe_lines": dedupe_lines,
     "remove_filler": remove_filler,
     "collapse_json_whitespace": collapse_json_whitespace,
+    "strip_code_comments": strip_code_comments,
 }
 
 DEFAULT_STRATEGIES = ("strip_whitespace",)
