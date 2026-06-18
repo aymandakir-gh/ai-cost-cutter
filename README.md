@@ -28,6 +28,7 @@ dependencies**, and everything testable offline (no API keys needed).
 | `compression` | Shrink prompts/context (whitespace, dedup, truncation, history pruning). | v0.2 |
 | `dashboard` | Aggregate a usage ledger into a spend + savings report. | v0.3 |
 | `benchmarks` | A reproducible workload proving a ≥30% cost cut. | v0.3 |
+| `savings_vs_quality` | Measure **both** cost saved and quality retained for each config — see the tradeoff, not just the savings. | v0.4 |
 
 ## Why provider-agnostic
 
@@ -120,11 +121,39 @@ Prove the savings on a deterministic, offline workload:
 aicc benchmark        # see benchmarks/README.md for how it stays honest
 ```
 
+Weigh savings against quality — cheaper is only better if answers hold up:
+
+```python
+from ai_cost_cutter import Sample, EvalConfig, compare_configs, contains_match
+
+workload = [Sample("Capital of France?", "Paris"), Sample("2 + 2?", "4")]
+
+def call(model, prompt):
+    ...  # your provider
+
+report = compare_configs(
+    workload, call,
+    {
+        "baseline": EvalConfig(model="gpt-4o"),
+        "routed":   EvalConfig(models=["gpt-4o-mini", "gpt-4o"]),
+        "cheap":    EvalConfig(model="gpt-4o-mini"),
+    },
+    scorer=contains_match,            # inject any scorer(reference, answer) -> [0,1]
+)
+print(report.render_text())          # cost, % saved, quality, % quality retained
+```
+
+You inject the quality scorer (a few ship in the box: `exact_match`,
+`normalized_match`, `contains_match`, `token_f1`), so the tradeoff is measured
+on *your* definition of "good enough" — fully offline.
+
 ## Roadmap
 
 - ✅ **v0.1** — `estimator` + `router`
 - ✅ **v0.2** — `cache` + `compression`
 - ✅ **v0.3** — `dashboard` + reproducible cost-cut benchmark (77.9% cut proven)
+- ✅ **v0.4** — broader price tables, more compression strategies, and a
+  `savings_vs_quality` eval module
 
 > Prices in `pricing.py` are approximate public list prices and are fully
 > overridable. The bundled table tags each model with its provider and covers

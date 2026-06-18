@@ -10,6 +10,8 @@ Modules
 - ``compression`` : prompt/context compression strategies.
 - ``ledger``      : a usage log shared across modules.
 - ``dashboard``   : cost dashboard built from the ledger.
+- ``savings_vs_quality`` : measure BOTH cost saved and quality retained for a
+  config, so the tradeoff is visible — not just the savings.
 
 Everything is provider-agnostic: you inject a ``call(model, prompt) -> str``
 function, so OpenAI, Anthropic, or a local model all work the same way and the
@@ -62,6 +64,18 @@ from .router import (
     Router,
     confidence_from_logprobs,
     heuristic_confidence,
+)
+from .savings_vs_quality import (
+    ComparisonReport,
+    EvalConfig,
+    EvalResult,
+    Sample,
+    compare_configs,
+    contains_match,
+    evaluate,
+    exact_match,
+    normalized_match,
+    token_f1,
 )
 from .tokens import count_messages_tokens, count_tokens
 
@@ -117,4 +131,15 @@ __all__ = [
     "run_benchmark",
     "build_workload",
     "BenchmarkResult",
+    # savings vs quality
+    "Sample",
+    "EvalConfig",
+    "EvalResult",
+    "ComparisonReport",
+    "evaluate",
+    "compare_configs",
+    "exact_match",
+    "normalized_match",
+    "contains_match",
+    "token_f1",
 ]
