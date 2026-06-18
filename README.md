@@ -91,6 +91,10 @@ result = compress(long_prompt, strategies=["strip_whitespace", "dedupe_lines"], 
 print(f"{result.reduction:.0%} fewer tokens")   # then send result.compressed
 ```
 
+Strategies include `strip_whitespace` (lossless, default), `dedupe_lines`,
+`remove_filler` (lossy), and `collapse_json_whitespace` (losslessly minify JSON
+blocks embedded in a prompt) — or pass your own `call(text) -> text` callable.
+
 ```bash
 cat prompt.txt | aicc compress --dedupe --filler --max-tokens 2000
 ```

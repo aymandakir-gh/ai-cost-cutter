@@ -33,6 +33,7 @@ from .cache import (
 from .compression import (
     CompressionResult,
     MessagePruneResult,
+    collapse_json_whitespace,
     compress,
     dedupe_lines,
     prune_messages,
@@ -98,6 +99,7 @@ __all__ = [
     "strip_whitespace",
     "dedupe_lines",
     "remove_filler",
+    "collapse_json_whitespace",
     "truncate_middle",
     "prune_messages",
     "MessagePruneResult",

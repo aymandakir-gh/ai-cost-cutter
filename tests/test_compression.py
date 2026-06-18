@@ -1,6 +1,9 @@
+import json
+
 import pytest
 
 from ai_cost_cutter.compression import (
+    collapse_json_whitespace,
     compress,
     dedupe_lines,
     prune_messages,
@@ -81,6 +84,53 @@ def test_compress_unknown_strategy_raises():
 def test_compress_accepts_callable_strategy():
     result = compress("HELLO", strategies=[str.lower])
     assert result.compressed == "hello"
+
+
+def test_collapse_json_whitespace_minifies_object():
+    text = 'Here is the data: {\n  "a": 1,\n  "b": [1, 2, 3]\n} thanks'
+    out = collapse_json_whitespace(text)
+    assert out == 'Here is the data: {"a":1,"b":[1,2,3]} thanks'
+
+
+def test_collapse_json_whitespace_is_lossless():
+    obj = {"name": "Ada", "tags": ["x", "y"], "n": 3, "nested": {"k": [1, 2]}}
+    text = "prefix " + json.dumps(obj, indent=4) + " suffix"
+    out = collapse_json_whitespace(text)
+    # The minified block round-trips to the same object.
+    minified = out[len("prefix "): -len(" suffix")]
+    assert json.loads(minified) == obj
+    assert count_tokens(out) < count_tokens(text)
+
+
+def test_collapse_json_whitespace_handles_multiple_blocks():
+    text = 'a {"x": 1} b [1,  2,   3] c'
+    out = collapse_json_whitespace(text)
+    assert out == 'a {"x":1} b [1,2,3] c'
+
+
+def test_collapse_json_whitespace_ignores_braces_in_strings():
+    text = '{"note": "use { and } carefully", "v":   2}'
+    out = collapse_json_whitespace(text)
+    assert json.loads(out) == {"note": "use { and } carefully", "v": 2}
+    assert out == '{"note":"use { and } carefully","v":2}'
+
+
+def test_collapse_json_whitespace_leaves_non_json_untouched():
+    # Looks bracket-y but is not valid JSON: must be left exactly as-is.
+    text = "if (x) { return y; } // not json"
+    assert collapse_json_whitespace(text) == text
+
+
+def test_collapse_json_whitespace_no_brackets_is_noop():
+    text = "plain prose with no structures"
+    assert collapse_json_whitespace(text) == text
+
+
+def test_collapse_json_whitespace_via_registry():
+    text = 'log: {"event":  "click",  "count": 7}'
+    result = compress(text, strategies=["collapse_json_whitespace"])
+    assert '"event":"click"' in result.compressed
+    assert result.tokens_after <= result.tokens_before
 
 
 def test_prune_messages_noop_when_under_budget():
