@@ -49,6 +49,8 @@ from .pricing import (
     UnknownModelError,
     get_price,
     known_models,
+    known_providers,
+    models_for_provider,
     register_price,
 )
 from .router import (
@@ -73,6 +75,8 @@ __all__ = [
     "UnknownModelError",
     "get_price",
     "known_models",
+    "known_providers",
+    "models_for_provider",
     "register_price",
     # tokens
     "count_tokens",
