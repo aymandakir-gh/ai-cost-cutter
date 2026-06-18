@@ -16,6 +16,39 @@ function, so OpenAI, Anthropic, or a local model all work the same way and the
 whole toolkit is testable offline.
 """
 
-__version__ = "0.0.0"
+__version__ = "0.1.0"
 
-__all__ = ["__version__"]
+from .estimator import (
+    CostEstimate,
+    estimate,
+    estimate_messages,
+    estimate_tokens,
+)
+from .pricing import (
+    DEFAULT_PRICES,
+    ModelPrice,
+    UnknownModelError,
+    get_price,
+    known_models,
+    register_price,
+)
+from .tokens import count_messages_tokens, count_tokens
+
+__all__ = [
+    "__version__",
+    # estimator
+    "CostEstimate",
+    "estimate",
+    "estimate_messages",
+    "estimate_tokens",
+    # pricing
+    "DEFAULT_PRICES",
+    "ModelPrice",
+    "UnknownModelError",
+    "get_price",
+    "known_models",
+    "register_price",
+    # tokens
+    "count_tokens",
+    "count_messages_tokens",
+]
