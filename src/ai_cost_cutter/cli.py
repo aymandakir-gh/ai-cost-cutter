@@ -148,6 +148,42 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_benchmark_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "benchmark", help="run the reproducible cost-cut benchmark"
+    )
+    p.add_argument("--json", action="store_true", help="emit JSON")
+    p.set_defaults(func=_cmd_benchmark)
+
+
+def _cmd_benchmark(args: argparse.Namespace) -> int:
+    from .benchmark import run_benchmark
+
+    result = run_benchmark()
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "requests": result.requests,
+                    "baseline_cost": result.baseline_cost,
+                    "optimized_cost": result.optimized_cost,
+                    "savings_pct": result.savings_pct,
+                    "breakdown": {
+                        k: {
+                            "cost": v,
+                            "savings_pct": result.savings_pct_for(k),
+                        }
+                        for k, v in result.breakdown.items()
+                    },
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(result.render_text())
+    return 0
+
+
 def _add_models_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("models", help="list known models and their prices")
     p.add_argument("--json", action="store_true", help="emit JSON")
@@ -196,6 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_estimate_parser(sub)
     _add_compress_parser(sub)
     _add_dashboard_parser(sub)
+    _add_benchmark_parser(sub)
     _add_models_parser(sub)
     return parser
 

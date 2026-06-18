@@ -16,7 +16,7 @@ function, so OpenAI, Anthropic, or a local model all work the same way and the
 whole toolkit is testable offline.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from .estimator import (
     CostEstimate,
@@ -40,6 +40,7 @@ from .compression import (
     strip_whitespace,
     truncate_middle,
 )
+from .benchmark import BenchmarkResult, build_workload, run_benchmark
 from .dashboard import DashboardReport, ModelUsage, build_report
 from .ledger import CallRecord, Ledger
 from .pricing import (
@@ -102,4 +103,8 @@ __all__ = [
     "build_report",
     "DashboardReport",
     "ModelUsage",
+    # benchmark
+    "run_benchmark",
+    "build_workload",
+    "BenchmarkResult",
 ]
