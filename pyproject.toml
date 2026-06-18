@@ -40,5 +40,5 @@ path = "src/ai_cost_cutter/__init__.py"
 packages = ["src/ai_cost_cutter"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "benchmarks"]
 addopts = "-q"
