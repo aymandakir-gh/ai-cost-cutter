@@ -51,6 +51,23 @@ def test_models_json(capsys):
     assert data["gpt-4o"]["provider"] == "openai"
 
 
+def test_compress_prints_text_and_stats(capsys):
+    rc = main(["compress", "--prompt", "dup\ndup\nunique", "--dedupe"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "unique" in captured.out
+    assert captured.out.count("dup") == 1  # deduped
+    assert "smaller" in captured.err
+
+
+def test_compress_stats_only_suppresses_text(capsys):
+    rc = main(["compress", "--prompt", "hello world", "--stats-only"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == ""
+    assert "tokens" in captured.err
+
+
 def test_no_command_prints_help(capsys):
     rc = main([])
     assert rc == 1

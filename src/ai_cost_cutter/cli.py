@@ -71,6 +71,55 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_compress_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "compress", help="compress a prompt and report token savings"
+    )
+    src = p.add_mutually_exclusive_group()
+    src.add_argument("--prompt", help="prompt text (else read stdin)")
+    src.add_argument("--prompt-file", help="read the prompt from a file")
+    p.add_argument("--model", "-m", help="model id (affects token counting)")
+    p.add_argument("--max-tokens", type=int, help="cap output to N tokens")
+    p.add_argument("--dedupe", action="store_true", help="drop duplicate lines")
+    p.add_argument("--filler", action="store_true", help="remove filler phrases")
+    p.add_argument(
+        "--stats-only",
+        action="store_true",
+        help="print only the savings summary (no compressed text on stdout)",
+    )
+    p.set_defaults(func=_cmd_compress)
+
+
+def _cmd_compress(args: argparse.Namespace) -> int:
+    from .compression import compress
+
+    if args.prompt_file:
+        with open(args.prompt_file, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    elif args.prompt is not None:
+        text = args.prompt
+    else:
+        text = sys.stdin.read()
+
+    strategies = ["strip_whitespace"]
+    if args.dedupe:
+        strategies.append("dedupe_lines")
+    if args.filler:
+        strategies.append("remove_filler")
+
+    result = compress(
+        text, strategies=strategies, max_tokens=args.max_tokens, model=args.model
+    )
+    if not args.stats_only:
+        print(result.compressed)
+    print(
+        f"tokens {result.tokens_before} -> {result.tokens_after} "
+        f"({result.reduction:.0%} smaller)",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _add_models_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("models", help="list known models and their prices")
     p.add_argument("--json", action="store_true", help="emit JSON")
@@ -117,6 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
     _add_estimate_parser(sub)
+    _add_compress_parser(sub)
     _add_models_parser(sub)
     return parser
 
