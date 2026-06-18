@@ -40,6 +40,34 @@ pip install ai-cost-cutter           # zero runtime dependencies
 pip install "ai-cost-cutter[tiktoken]"   # optional: exact OpenAI token counts
 ```
 
+## Quickstart
+
+Estimate a call's cost:
+
+```python
+from ai_cost_cutter import estimate
+est = estimate("gpt-4o", "Summarize this document...", expected_output_tokens=300)
+print(f"${est.total_cost:.4f}")
+```
+
+Route cheap-first and escalate only when the cheap model is unsure:
+
+```python
+from ai_cost_cutter import Router
+
+def call(model, prompt):
+    ...  # your provider; return the model's reply as text
+
+router = Router(["gpt-4o-mini", "gpt-4o"], call)   # ordered cheap -> capable
+result = router.route("What is the capital of France?")
+print(result.model, "|", result.response)
+print(f"escalated={result.escalated} saved={result.savings_pct:.0%}")
+```
+
+`route()` calls the cheapest model first, scores its confidence (a pluggable
+heuristic by default — swap in logprobs or a judge model), and escalates only
+when confidence is below the threshold.
+
 ## Roadmap
 
 - **v0.1** — `estimator` + `router`
