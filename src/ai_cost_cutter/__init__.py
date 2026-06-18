@@ -31,6 +31,10 @@ from .cache import (
     MemoryBackend,
     ResponseCache,
     SQLiteBackend,
+    aggressive_normalize,
+    default_normalize,
+    normalize_key,
+    stemming_normalize,
 )
 from .compression import (
     CompressionResult,
@@ -109,6 +113,10 @@ __all__ = [
     "CacheStats",
     "MemoryBackend",
     "SQLiteBackend",
+    "default_normalize",
+    "aggressive_normalize",
+    "stemming_normalize",
+    "normalize_key",
     # compression
     "compress",
     "CompressionResult",
